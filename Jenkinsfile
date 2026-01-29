@@ -1,43 +1,48 @@
 pipeline {
   agent { label 'Jenkins-Agent' }
-
+  
   tools {
     jdk 'Java17'
     maven 'Maven3'
   }
-
-  parameters {
-    booleanParam(name: 'DOCKER_PUSH', defaultValue: false)
-    string(name: 'APP_NAME', defaultValue: 'register-app')
-    string(name: 'RELEASE', defaultValue: '1.0.0')
-    string(name: 'DOCKERHUB_USER', defaultValue: 'your-dockerhub-username')
-    string(name: 'DOCKERHUB_CRED_ID', defaultValue: 'dockerhub')
+  
+  environment {
+    APP_NAME = "register-app"
+    RELEASE = "1.0.0"
+    DOCKER_USER = "mengningli"
+    DOCKER_PASS = 'dockerhub'
+    IMAGE_NAME = "${DOCKER_USER}/${APP_NAME}"
+    IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
   }
-
+  
+  parameters {
+    booleanParam(name: 'DOCKER_PUSH', defaultValue: false, description: 'Build and push Docker image?')
+  }
+  
   options {
     timestamps()
   }
-
+  
   stages {
-    stage('Cleanup') {
+    stage('Cleanup Workspace') {
       steps {
         cleanWs()
       }
     }
-
-    stage('Checkout') {
+    
+    stage('Checkout from SCM') {
       steps {
         git branch: 'main', credentialsId: 'github', url: 'https://github.com/mengning-li/register-app.git'
       }
     }
-
-    stage('Build') {
+    
+    stage('Build Application') {
       steps {
         sh 'mvn -B -U clean package'
       }
     }
-
-    stage('Test') {
+    
+    stage('Test Application') {
       steps {
         sh 'mvn -B test'
       }
@@ -48,15 +53,17 @@ pipeline {
         }
       }
     }
-
+    
     stage('SonarQube Analysis') {
       steps {
-        withSonarQubeEnv('sonarqube') {
-          sh 'mvn -B sonar:sonar'
+        script {
+          withSonarQubeEnv('sonarqube') {
+            sh 'mvn -B sonar:sonar'
+          }
         }
       }
     }
-
+    
     stage('Quality Gate') {
       steps {
         timeout(time: 10, unit: 'MINUTES') {
@@ -64,44 +71,50 @@ pipeline {
         }
       }
     }
-
-    stage('Docker Build') {
-      when { expression { return params.DOCKER_PUSH } }
-      steps {
-        script {
-          def imageRepo = "${params.DOCKERHUB_USER}/${params.APP_NAME}"
-          def imageTag = "${params.RELEASE}-${env.BUILD_NUMBER}"
-          def img = docker.build("${imageRepo}:${imageTag}")
-          env.IMAGE_REPO = imageRepo
-          env.IMAGE_TAG = imageTag
-        }
+    
+    stage('Build Docker Image') {
+      when { 
+        expression { return params.DOCKER_PUSH } 
       }
-    }
-
-    stage('Docker Push') {
-      when { expression { return params.DOCKER_PUSH } }
       steps {
         script {
-          docker.withRegistry('https://index.docker.io/v1/', params.DOCKERHUB_CRED_ID) {
-            docker.image("${env.IMAGE_REPO}:${env.IMAGE_TAG}").push()
-            docker.image("${env.IMAGE_REPO}:${env.IMAGE_TAG}").push('latest')
+          docker.withRegistry('', DOCKER_PASS) {
+            docker_image = docker.build "${IMAGE_NAME}:${IMAGE_TAG}"
           }
         }
       }
     }
-
-    stage('Trivy Scan') {
-      when { expression { return params.DOCKER_PUSH } }
+    
+    stage('Push Docker Image') {
+      when { 
+        expression { return params.DOCKER_PUSH } 
+      }
       steps {
-        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image ${env.IMAGE_REPO}:latest --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table"
+        script {
+          docker.withRegistry('', DOCKER_PASS) {
+            docker_image.push("${IMAGE_TAG}")
+            docker_image.push('latest')
+          }
+        }
       }
     }
-
-    stage('Local Docker Cleanup') {
-      when { expression { return params.DOCKER_PUSH } }
+    
+    stage('Trivy Security Scan') {
+      when { 
+        expression { return params.DOCKER_PUSH } 
+      }
       steps {
-        sh "docker rmi ${env.IMAGE_REPO}:${env.IMAGE_TAG} || true"
-        sh "docker rmi ${env.IMAGE_REPO}:latest || true"
+        sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image ${IMAGE_NAME}:latest --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table"
+      }
+    }
+    
+    stage('Cleanup Docker Images') {
+      when { 
+        expression { return params.DOCKER_PUSH } 
+      }
+      steps {
+        sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
+        sh "docker rmi ${IMAGE_NAME}:latest || true"
       }
     }
   }
