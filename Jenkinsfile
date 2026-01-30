@@ -63,7 +63,6 @@ pipeline {
       }
     }
     
-    // 删除了 when 限制，直接开始构建和推送
     stage('Build & Push Docker Image') {
       steps {
         script {
@@ -104,16 +103,16 @@ pipeline {
       }
     }
   }   
-    post {
-       failure {
-             emailext body: '''${SCRIPT, template="groovy-html.template"}''', 
-                      subject: "${env.JOB_NAME} - Build # ${env.BUILD_NUMBER} - Failed", 
-                      mimeType: 'text/html',to: "limengninglmn@gmail.com"
-       }
-      success {
-            emailext body: '''${SCRIPT, template="groovy-html.template"}''', 
-                     subject: "${env.JOB_NAME} - Build # ${env.BUILD_NUMBER} - Successful", 
-                     mimeType: 'text/html',to: "limengninglmn@gmail.com"
-      }      
-   }
+    // post {
+    //    failure {
+    //          emailext body: '''${SCRIPT, template="groovy-html.template"}''', 
+    //                   subject: "${env.JOB_NAME} - Build # ${env.BUILD_NUMBER} - Failed", 
+    //                   mimeType: 'text/html',to: "limengninglmn@gmail.com"
+    //    }
+    //   success {
+    //         emailext body: '''${SCRIPT, template="groovy-html.template"}''', 
+    //                  subject: "${env.JOB_NAME} - Build # ${env.BUILD_NUMBER} - Successful", 
+    //                  mimeType: 'text/html',to: "limengninglmn@gmail.com"
+    //   }      
+    // }
 }
