@@ -16,9 +16,6 @@ pipeline {
     JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
   }
   
-  parameters {
-    booleanParam(name: 'DOCKER_PUSH', defaultValue: false, description: 'Build and push Docker image?')
-  }
   
   options {
     timestamps()
