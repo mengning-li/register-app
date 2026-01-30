@@ -15,17 +15,14 @@ pipeline {
     IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
     JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
   }
-  
-  
+
   options {
     timestamps()
   }
   
   stages {
     stage('Cleanup Workspace') {
-      steps {
-        cleanWs()
-      }
+      steps { cleanWs() }
     }
     
     stage('Checkout from SCM') {
@@ -35,15 +32,11 @@ pipeline {
     }
     
     stage('Build Application') {
-      steps {
-        sh 'mvn -B -U clean package'
-      }
+      steps { sh 'mvn -B -U clean package' }
     }
     
     stage('Test Application') {
-      steps {
-        sh 'mvn -B test'
-      }
+      steps { sh 'mvn -B test' }
       post {
         always {
           junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
@@ -70,26 +63,12 @@ pipeline {
       }
     }
     
-    stage('Build Docker Image') {
-      when { 
-        expression { return params.DOCKER_PUSH } 
-      }
+    // 删除了 when 限制，直接开始构建和推送
+    stage('Build & Push Docker Image') {
       steps {
         script {
           docker.withRegistry('', DOCKER_PASS) {
             docker_image = docker.build "${IMAGE_NAME}:${IMAGE_TAG}"
-          }
-        }
-      }
-    }
-    
-    stage('Push Docker Image') {
-      when { 
-        expression { return params.DOCKER_PUSH } 
-      }
-      steps {
-        script {
-          docker.withRegistry('', DOCKER_PASS) {
             docker_image.push("${IMAGE_TAG}")
             docker_image.push('latest')
           }
@@ -98,18 +77,12 @@ pipeline {
     }
     
     stage('Trivy Security Scan') {
-      when { 
-        expression { return params.DOCKER_PUSH } 
-      }
       steps {
         sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image ${IMAGE_NAME}:latest --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table"
       }
     }
     
     stage('Cleanup Docker Images') {
-      when { 
-        expression { return params.DOCKER_PUSH } 
-      }
       steps {
         sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
         sh "docker rmi ${IMAGE_NAME}:latest || true"
@@ -117,12 +90,6 @@ pipeline {
     }
     
     stage("Trigger CD Pipeline") {
-      when { 
-        expression { return params.DOCKER_PUSH } 
-      }
-      environment {
-        JENKINS_API_TOKEN = credentials('JENKINS_API_TOKEN')
-      }
       steps {
         script {
           sh """
@@ -136,5 +103,17 @@ pipeline {
         }
       }
     }
+    
+    post {
+       failure {
+             emailext body: '''${SCRIPT, template="groovy-html.template"}''', 
+                      subject: "${env.JOB_NAME} - Build # ${env.BUILD_NUMBER} - Failed", 
+                      mimeType: 'text/html',to: "limengninglmn@gmail.com"
+      }
+      success {
+            emailext body: '''${SCRIPT, template="groovy-html.template"}''', 
+                     subject: "${env.JOB_NAME} - Build # ${env.BUILD_NUMBER} - Successful", 
+                     mimeType: 'text/html',to: "limengninglmn@gmail.com"
+      }      
   }
 }
