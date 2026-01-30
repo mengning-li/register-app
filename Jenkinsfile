@@ -97,7 +97,7 @@ pipeline {
             -H 'cache-control: no-cache' \
             -H 'content-type: application/x-www-form-urlencoded' \
             --data 'IMAGE_TAG=${IMAGE_TAG}' \
-            'http://54.206.135.188:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'
+            'http://localhost:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'
           """
         }
       }
